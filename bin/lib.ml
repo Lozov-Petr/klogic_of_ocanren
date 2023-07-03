@@ -165,6 +165,14 @@ let translate_expr fallback : (unit, _ ast) Tast_folder.t =
   }
 ;;
 
+let shorten n f ppf x =
+  Format.asprintf "%a" f x
+  |> String.split_on_char ~sep:'\n'
+  |> (fun xs -> List.init ~len:(Int.min n (List.length xs)) ~f:(List.nth xs))
+  |> String.concat ~sep:"\n"
+  |> Format.fprintf ppf "\n%s%!"
+;;
+
 let translate fallback : (Inh_info.t, unit) Tast_folder.t =
   let extract_rel_arguments n e =
     let rec helper n acc e =
@@ -175,7 +183,12 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
           Location.none
           e
           (fun name typ body -> helper (n - 1) ((name, typ) :: acc) body)
-          ~on_error:(fun _ -> assert false)
+          ~on_error:(fun _ ->
+            Format.eprintf
+              "Can't extract function argument from:\n%a\n%!"
+              (shorten 20 MyPrinttyped.expr)
+              e;
+            assert false)
     in
     helper n [] e
   in
@@ -241,13 +254,6 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
       in
       helper [] e |> Inh_info.add_hints inh_info
     | _ -> ()
-  in
-  let shorten n f ppf x =
-    Format.asprintf "%a" f x
-    |> String.split_on_char ~sep:'\n'
-    |> (fun xs -> List.init ~len:(Int.min n (List.length xs)) ~f:(List.nth xs))
-    |> String.concat ~sep:"\n"
-    |> Format.fprintf ppf "\n%s%!"
   in
   let open Tast_folder in
   { fallback with
