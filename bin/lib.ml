@@ -242,6 +242,13 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
       helper [] e |> Inh_info.add_hints inh_info
     | _ -> ()
   in
+  let shorten n f ppf x =
+    Format.asprintf "%a" f x
+    |> String.split_on_char ~sep:'\n'
+    |> (fun xs -> List.init ~len:(Int.min n (List.length xs)) ~f:(List.nth xs))
+    |> String.concat ~sep:"\n"
+    |> Format.fprintf ppf "\n%s%!"
+  in
   let open Tast_folder in
   { fallback with
     expr =
@@ -251,11 +258,16 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
           te.expr te () expr
         in
         (), expr)
+  ; stru =
+      (fun self inh s ->
+        List.iter s.str_items ~f:(fun stru -> fst (self.stru_item self inh stru)), s)
   ; stru_item =
-      (fun _self inh si ->
+      (fun self inh si ->
         let on_rel_decl = function
-          | { Typedtree.vb_pat = { pat_desc = Tpat_var (_, { txt = name; _ }); _ }; _ } as
-            vb ->
+          | ( { Typedtree.vb_pat = { pat_desc = Tpat_alias (_, ident, _); _ }; _ }
+            | { Typedtree.vb_pat = { pat_desc = Tpat_var (ident, { txt = _; _ }); _ }; _ }
+              ) as vb ->
+            let name = Ident.name ident in
             (match expr_is_a_goal vb.vb_expr with
              | None ->
                Format.eprintf "Not a goal: %s\n%!" name;
@@ -279,7 +291,14 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
                in
                (), si)
           | { Typedtree.vb_pat = { pat_desc = Tpat_any; _ }; _ } -> (), si
-          | _ -> assert false
+          | vb ->
+            Format.eprintf
+              "Value binding is ignored\n%a\n%!"
+              Pprintast.binding
+              (MyUntype.value_binding vb);
+            Format.printf "%a\n%!" (shorten 25 MyPrinttyped.vb) vb;
+            let _ = assert false in
+            (), si
         in
         match si.str_desc with
         | Tstr_value (_, [ vb ]) -> on_rel_decl vb
@@ -306,7 +325,7 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
                   ]
             ; _
             } ->
-          Inh_info.add_preamble inh s;
+          Inh_info.add_plain inh s;
           (), si
         | Tstr_attribute
             { attr_name = { txt = "klogic.epilogue"; _ }
@@ -324,7 +343,7 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
                   ]
             ; _
             } ->
-          Inh_info.add_epilogue inh s;
+          Inh_info.add_plain inh s;
           (), si
         | Tstr_attribute
             { attr_name = { txt = "klogic.type.mangle"; _ }; attr_payload; _ } ->
@@ -332,11 +351,73 @@ let translate fallback : (Inh_info.t, unit) Tast_folder.t =
           on_type_mangle_spec inh attr_payload;
           (* TODO: specify mangling of names as an attribute *)
           (), si
-        | Tstr_attribute _ | Tstr_type _ | Tstr_open _ -> (), si
+        | Tstr_class _ | Tstr_attribute _ | Tstr_type _ | Tstr_open _ -> (), si
+        (* | Tstr_module
+            { mb_expr =
+                { mod_desc = Tmod_functor (_, { mod_desc = Tmod_structure stru; _ }); _ }
+            ; _
+            } ->
+          let inh2 = Inh_info.create () in
+          let _ = self.stru self inh2 stru in
+          Inh_info.add_info inh ~data:inh2;
+          (), si *)
+        | Tstr_include
+            { incl_mod =
+                { mod_desc =
+                    Tmod_constraint ({ mod_desc = Tmod_structure stru; _ }, _, _, _)
+                ; _
+                }
+            ; _
+            }
+        | Tstr_include { incl_mod = { mod_desc = Tmod_structure stru; _ }; _ }
+        | Tstr_module
+            { mb_expr =
+                { mod_desc = Tmod_functor (_, { mod_desc = Tmod_structure stru; _ }); _ }
+            ; _
+            }
+        | Tstr_module { mb_expr = { mod_desc = Tmod_structure stru; _ }; _ } ->
+          Format.printf "%a\n%!" (shorten 10 MyPrinttyped.stru_item) si;
+          (* Format.printf "%a\n%!" (shorten 10 MyPrinttyped.me) me; *)
+          Format.printf
+            "%a\n%!"
+            (shorten 10 Pprintast.structure_item)
+            (MyUntype.untype_stru_item si);
+          let inh2 = Inh_info.create () in
+          let _ = self.stru self inh2 stru in
+          Inh_info.add_info inh ~data:inh2;
+          (), si
         | _ ->
-          Format.eprintf "%a\n%!" Pprintast.structure_item (MyUntype.untype_stru_item si);
-          Printf.ksprintf failwith "Not implemented in 'folder' (%s %d)" __FILE__ __LINE__
-        (* self.stru_item self inh si *))
+          let () =
+            match si.str_desc with
+            | Tstr_include { incl_mod = { mod_desc = Tmod_structure _; _ }; _ } ->
+              Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | Tstr_include { incl_mod = { mod_desc = Tmod_ident _; _ }; _ } ->
+              Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | Tstr_include { incl_mod = { mod_desc = Tmod_functor _; _ }; _ } ->
+              Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | Tstr_include { incl_mod = { mod_desc = Tmod_apply _; _ }; _ } ->
+              Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | Tstr_include { incl_mod = { mod_desc = Tmod_constraint _; _ }; _ } ->
+              Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | Tstr_include { incl_mod = { mod_desc = Tmod_unpack _; _ }; _ } ->
+              Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | Tstr_module { mb_expr = { mod_desc = Tmod_constraint (_, _, _, _); _ }; _ }
+              -> Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | Tstr_module
+                { mb_expr =
+                    { mod_desc = Tmod_functor (_, { mod_desc = Tmod_structure stru; _ })
+                    ; _
+                    }
+                ; _
+                } -> Format.printf "%s %d\n%!" __FILE__ __LINE__
+            | _ -> Format.printf "%s %d\n%!" __FILE__ __LINE__
+          in
+          Format.eprintf
+            "@[%a@]====\n%!"
+            (shorten 10 Pprintast.structure_item)
+            (MyUntype.untype_stru_item si);
+          Format.eprintf "@[%a@]====\n%!" (shorten 25 MyPrinttyped.stru_item) si;
+          Printf.ksprintf failwith "Not implemented in 'folder' (%s %d)" __FILE__ __LINE__)
   }
 ;;
 
@@ -351,14 +432,15 @@ let analyze_cmt _source_file out_file stru =
   Out_channel.with_file out_file ~f:(fun ch ->
     match translate_implementation stru with
     | Stdlib.Result.Ok info ->
-      Printf.fprintf ch "%s\n" (Inh_info.preamble info);
-      Printf.fprintf ch "// There are %d relations\n" (List.length info.Inh_info.rvbs);
+      (* Printf.fprintf ch "%s\n" (Inh_info.ad info); *)
       let ppf = Format.formatter_of_out_channel ch in
-      Inh_info.iter_vbs info ~f:(function
+      Format.fprintf ppf "// There are %d relations\n%!" (List.length info.Inh_info.rvbs);
+      Inh_info.pp (pp_rvb_as_kotlin ~pretty:Trans_config.(config.pretty) info) ppf info;
+      (* Inh_info.iter_vbs info ~f:(function
         | Inh_info.RVB rvb ->
           pp_rvb_as_kotlin ~pretty:Trans_config.(config.pretty) info ppf rvb
-        | Plain_kotlin s -> Format.fprintf ppf "%s" s);
-      Printf.fprintf ch "%s\n" (Inh_info.epilogue info);
+        | Plain_kotlin s -> Format.fprintf ppf "%s" s); *)
+      (* Printf.fprintf ch "%s\n" (Inh_info.epilogue info); *)
       Format.pp_print_flush ppf ();
       flush ch
     | Error _ -> assert false)

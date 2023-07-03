@@ -34,6 +34,7 @@ let default (type inh syn) : (inh, syn) t =
       (fun self inh s ->
         match s.str_items with
         | [] ->
+          (* syn ,s  *)
           Format.kasprintf failwith "Not implemented in 'folder.stru': empty structure\n"
         | h :: tl ->
           let syn, h = self.stru_item self inh h in

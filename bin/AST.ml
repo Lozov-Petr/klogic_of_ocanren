@@ -67,22 +67,17 @@ let map_ast f = function
 ;;
 
 module Inh_info = struct
-  type item =
+  type 'self item =
     | RVB of Rvb.t
     | Plain_kotlin of string
+    | Self of 'self
 
   type t =
     { type_mangle_hints : (string, string) Hashtbl.t
-    ; mutable rvbs : item list
-    ; mutable preamble : string
-    ; mutable epilogue : string
+    ; mutable rvbs : t item list
     }
 
-  let create () =
-    { type_mangle_hints = Hashtbl.create 13; rvbs = []; preamble = ""; epilogue = "" }
-  ;;
-
-  let add_rvb t rvb = t.rvbs <- RVB rvb :: t.rvbs
+  let create () = { type_mangle_hints = Hashtbl.create 13; rvbs = [] }
   let lookup_typ_exn t typ = Hashtbl.find t.type_mangle_hints typ
 
   let add_hints info hints =
@@ -92,11 +87,21 @@ module Inh_info = struct
       Hashtbl.add_exn info.type_mangle_hints ~key ~data)
   ;;
 
-  let iter_vbs { rvbs; _ } ~f = List.iter (List.rev rvbs) ~f
-  let add_preamble t s = t.preamble <- t.preamble ^ s
-  let add_epilogue t s = t.epilogue <- t.epilogue ^ s
-  let preamble { preamble; _ } = preamble
-  let epilogue { epilogue; _ } = epilogue
+  let add_info t ~data = t.rvbs <- Self data :: t.rvbs
+  let add_plain t s = t.rvbs <- Plain_kotlin s :: t.rvbs
+  let add_rvb t rvb = t.rvbs <- RVB rvb :: t.rvbs
+
+  (* let iter_vbs { rvbs; _ } ~f = List.iter (List.rev rvbs) ~f *)
+
+  let rec pp f ppf t =
+    let open Format in
+    List.rev t.rvbs
+    |> List.iter ~f:(function
+         | Self x -> fprintf ppf "%a\n%!" (pp f) x
+         | RVB rvb -> fprintf ppf "%a\n%!" f rvb
+         | Plain_kotlin s -> Format.fprintf ppf "%s\n%!" s);
+    Format.fprintf ppf "\n%!"
+  ;;
 end
 
 let pp_typ_as_kotlin inh_info ppf typ =

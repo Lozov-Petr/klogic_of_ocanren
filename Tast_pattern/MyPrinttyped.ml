@@ -50,3 +50,12 @@ let stru_item ppf item =
 let attrs ppf attrs =
   Pprintast.expression ppf (Ast_helper.Exp.constant (Pconst_integer ("1", None)) ~attrs)
 ;;
+
+let vb ppf vb =
+  stru_item
+    ppf
+    { str_desc = Typedtree.Tstr_value (Asttypes.Nonrecursive, [ vb ])
+    ; str_loc = vb.vb_loc
+    ; str_env = Env.empty
+    }
+;;

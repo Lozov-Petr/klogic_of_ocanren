@@ -2,7 +2,7 @@ let need_simpified = false
 
 [@@@ocaml.warning "-8"]
 
-open Option
+(* open Option
 open Peano
 open List
 open Option
@@ -65,6 +65,8 @@ and substitute_arg subst = function
   | Wildcard None -> Wildcard None
   | Wildcard (Some (p, typ1)) -> Wildcard (Some (p, substitute_typ subst typ1))
 ;;
+
+[@@@klogic.preamble "// FUCK "]
 
 module Verifier (CT : sig
   val decl_by_id : int -> decl
@@ -185,7 +187,7 @@ struct
     | Var { upb = typ } -> typ = tb
     | Null -> tb <> Null
   ;;
-end
+end *)
 
 [@@@ocaml.warning "+8-27"]
 
@@ -263,7 +265,8 @@ module HO = struct
     | CC_var of int * nat * capture_conversion_subst * jtype option
   [@@deriving gt ~options:{ show; fmt; gmap }]]
 
-  let rec substitute_typ subst q0 q30 =
+  let rec substitute_typ : _ -> (jtype_injected -> goal) -> _ =
+   fun subst q0 q30 ->
     fresh
       q3
       (q0 q3)
@@ -291,7 +294,8 @@ module HO = struct
          ; fresh () (q3 === !!Null) (q30 === !!Null)
          ])
 
-  and substitute_arg subst q34 q63 =
+  and substitute_arg : (_ Std.List.injected -> goal) -> _ -> _ =
+   fun subst q34 q63 ->
     fresh
       q37
       (q34 q37)
@@ -322,7 +326,7 @@ module HO = struct
              (q37 =/= !!(Type (var __ __ __ __)))
              (substitute_typ subst (( === ) typ) q59)
          ])
-  ;;
+ ;;
 
   module Verifier (CT : sig
     module HO : sig
@@ -872,7 +876,7 @@ module HO = struct
     ;;
   end
 end
-
+(* 
 module FO = struct
   open Option.HO
   open Peano.HO
@@ -918,4 +922,4 @@ module FO = struct
         q380
     ;;
   end
-end
+end *)
